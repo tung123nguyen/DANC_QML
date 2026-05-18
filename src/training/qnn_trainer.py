@@ -70,7 +70,7 @@ def train_qnn(
     params = pnp.array(rng.uniform(-0.1, 0.1, n_params), requires_grad=True)
 
     optimizer = qml.AdamOptimizer(stepsize=learning_rate)
-    grad_fn = qml.grad(_bce_loss, argnum=0)
+    grad_fn = qml.grad(_bce_loss)
 
     n = X_train.shape[0]
     history = []
