@@ -32,7 +32,11 @@ QNN_DEPTH = 2
 QNN_EPOCHS = 80
 QNN_LR = 0.05
 QNN_BATCH = 32
+<<<<<<< HEAD
 QNN_DEVICE = "lightning.qubit"  # change to "lightning.gpu" on Colab GPU
+=======
+QNN_DEVICE = "default.qubit"  # change to "lightning.gpu" on Colab GPU
+>>>>>>> c5148461b61d1f2474d7530f198bde2c24524a35
 
 
 # =========================================================================

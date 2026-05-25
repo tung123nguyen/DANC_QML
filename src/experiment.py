@@ -23,28 +23,43 @@ def load_config(path: Path) -> dict:
         return yaml.safe_load(f)
 
 
+<<<<<<< HEAD
 def make_run_dir(config: dict, smoke_test: bool = False) -> Path:
     timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
     name = config["experiment"]["name"]
     seed = config["experiment"]["seed"]
     prefix = "SMOKE_" if smoke_test else ""
     run_dir = get_results_root() / f"{prefix}{timestamp}_{name}_seed{seed}"
+=======
+def make_run_dir(config: dict) -> Path:
+    timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+    name = config["experiment"]["name"]
+    seed = config["experiment"]["seed"]
+    run_dir = get_results_root() / f"{timestamp}_{name}_seed{seed}"
+>>>>>>> c5148461b61d1f2474d7530f198bde2c24524a35
     run_dir.mkdir(parents=True, exist_ok=True)
     return run_dir
 
 
 def already_done(config: dict) -> bool:
+<<<<<<< HEAD
     """Check if this exact experiment has been run before (REAL runs only).
 
     Smoke test results are excluded from this check - they have a SMOKE_
     prefix on their folder name and don't count as "done".
     """
+=======
+    """Check if this exact experiment has been run before."""
+>>>>>>> c5148461b61d1f2474d7530f198bde2c24524a35
     name = config["experiment"]["name"]
     seed = config["experiment"]["seed"]
     pattern = f"*_{name}_seed{seed}"
     for d in get_results_root().glob(pattern):
+<<<<<<< HEAD
         if d.name.startswith("SMOKE_"):
             continue  # ignore smoke results
+=======
+>>>>>>> c5148461b61d1f2474d7530f198bde2c24524a35
         if (d / "metrics.json").exists():
             return True
     return False
@@ -125,7 +140,11 @@ def run_experiment(config_path: Path, smoke_test: bool = False) -> dict:
         print(f"SKIP {config['experiment']['name']} (already done)")
         return {}
 
+<<<<<<< HEAD
     run_dir = make_run_dir(config, smoke_test=smoke_test)
+=======
+    run_dir = make_run_dir(config)
+>>>>>>> c5148461b61d1f2474d7530f198bde2c24524a35
     logger = setup_logger("experiment", log_file=run_dir / "run.log")
     logger.info("Starting run: %s", run_dir.name)
     logger.info("Config: %s", config_path)
