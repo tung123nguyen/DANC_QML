@@ -59,9 +59,14 @@ def _build_rf(seed: int):
 
 
 def _build_mlp(seed: int):
+    # early_stopping=False: with early_stopping=True sklearn carves a
+    # validation split out of the already-tiny training fold and stops
+    # before the net learns anything, which collapses MLP to all-benign
+    # (F1=0.0) at small N. Disabling it keeps MLP comparable to the other
+    # baselines under the small-sample budget.
     return MLPClassifier(
         hidden_layer_sizes=(32, 16),
         max_iter=500,
         random_state=seed,
-        early_stopping=True,
+        early_stopping=False,
     )
