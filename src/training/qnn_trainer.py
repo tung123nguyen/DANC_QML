@@ -70,6 +70,10 @@ def train_qnn(
     params = pnp.array(rng.uniform(-0.1, 0.1, n_params), requires_grad=True)
 
     optimizer = qml.AdamOptimizer(stepsize=learning_rate)
+    # params is the first argument of _bce_loss and is marked requires_grad=True
+    # via pnp.array(..., requires_grad=True), so qml.grad auto-detects it.
+    # Note: 'argnum' kwarg was renamed to 'argnums' in PennyLane 0.44+;
+    # we omit it entirely to be compatible with both old and new versions.
     grad_fn = qml.grad(_bce_loss)
 
     n = X_train.shape[0]
