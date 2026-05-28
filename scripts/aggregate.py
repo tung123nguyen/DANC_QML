@@ -16,6 +16,10 @@ def collect_runs() -> pd.DataFrame:
     for run_dir in sorted(get_results_root().iterdir()):
         if not run_dir.is_dir():
             continue
+        # Fix #2: ignore smoke-test result folders. Real runs never carry
+        # this prefix; smoke runs use train=20 and would pollute the means.
+        if run_dir.name.startswith("SMOKE_"):
+            continue
         cfg_path = run_dir / "config.yaml"
         metrics_path = run_dir / "metrics.json"
         if not (cfg_path.exists() and metrics_path.exists()):
@@ -58,6 +62,29 @@ def main():
     if df.empty:
         print("No completed runs found in", get_results_root())
         return
+
+    # Fix #2: keep only the intended training-set sizes. A stray smoke-test
+    # row (train=20) without the SMOKE_ prefix once leaked into the CSV.
+    n_before = len(df)
+    df = df[df["train_samples_per_class"].isin([100, 250, 500])]
+    if len(df) < n_before:
+        print(f"Dropped {n_before - len(df)} row(s) with non-standard train size")
+
+    # Fix #3: deduplicate. Some runs (e.g. Q4 S1 N500) were executed twice;
+    # keep the most recent folder per (scenario, N, seed, model identity).
+    # 'run' starts with a timestamp, so sorting by it puts newest last.
+    dup_keys = [
+        "scenario", "train_samples_per_class", "seed",
+        "model_type", "model_name", "encoding", "ansatz",
+    ]
+    n_before = len(df)
+    df = (
+        df.sort_values("run")
+        .drop_duplicates(subset=dup_keys, keep="last")
+        .reset_index(drop=True)
+    )
+    if len(df) < n_before:
+        print(f"Dropped {n_before - len(df)} duplicate run(s)")
 
     df.to_csv(args.output, index=False)
     print(f"Wrote {len(df)} rows to {args.output}")
