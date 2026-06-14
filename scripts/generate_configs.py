@@ -28,7 +28,7 @@ QNN_MODELS = [
     ("q3", "angle", "strongly_entangling"),
     ("q4", "reuploading", "basic_entangler"),
 ]
-QNN_DEPTH = 2
+QNN_DEPTH = 4
 QNN_EPOCHS = 80
 QNN_LR = 0.05
 QNN_BATCH = 32

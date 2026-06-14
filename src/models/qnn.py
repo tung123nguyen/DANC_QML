@@ -24,7 +24,13 @@ ENCODING NORMALISATION (angle_clip):
     [-pi, pi]. Default angle_clip=3.0 keeps ~99.7% of Gaussian data in the
     linear region; set it to None/0 to disable (reproduces the old raw encoding).
 
-Output: single Pauli-Z expectation on qubit 0, mapped to [0, 1] by (1+z)/2.
+READOUT (linear head):
+    The circuit measures <Z_i> on EVERY qubit, giving a vector z in [-1, 1]^n.
+    A classical linear head turns it into one logit (logit = w . z + b) and a
+    sigmoid maps that to a probability in [0, 1]. The head weights w (n_qubits)
+    and bias b (1) are trained jointly with the quantum params: build_qnn lays
+    them out as a single flat vector [quantum_params | w | b] and the trainer
+    (qnn_trainer.py) applies the head. See n_quantum_params / n_head_params.
 """
 from __future__ import annotations
 from dataclasses import dataclass
@@ -92,7 +98,8 @@ def _params_per_layer(ansatz: str, n_qubits: int) -> int:
 def build_qnode(encoding: str, ansatz: str, n_qubits: int, depth: int, device_name: str = "default.qubit", angle_clip: float = 3.0):
     """Build the QNode and return (qnode, param_shape).
 
-    The returned qnode takes (params_flat, x) and returns a Pauli-Z expectation.
+    The returned qnode takes (quantum_params, x) and returns a list of <Z_i>
+    expectations, one per qubit (the linear head lives in the trainer).
     angle_clip controls the [-pi, pi] encoding normalisation (see module docstring).
     """
     if not PENNYLANE_AVAILABLE:
@@ -111,7 +118,7 @@ def build_qnode(encoding: str, ansatz: str, n_qubits: int, depth: int, device_na
             for d in range(depth):
                 layer_params = params[d * ppl: (d + 1) * ppl]
                 _apply_ansatz(layer_params, ansatz, n_qubits)
-            return qml.expval(qml.PauliZ(0))
+            return [qml.expval(qml.PauliZ(i)) for i in range(n_qubits)]
 
     elif encoding == "reuploading":
         # Repeat (encode + ansatz) `depth` times
@@ -123,7 +130,7 @@ def build_qnode(encoding: str, ansatz: str, n_qubits: int, depth: int, device_na
                 _angle_embed(x, n_qubits, angle_clip)
                 layer_params = params[d * ppl: (d + 1) * ppl]
                 _apply_ansatz(layer_params, ansatz, n_qubits)
-            return qml.expval(qml.PauliZ(0))
+            return [qml.expval(qml.PauliZ(i)) for i in range(n_qubits)]
 
     else:
         raise ValueError(f"Unknown encoding: {encoding}")
@@ -142,14 +149,24 @@ class QNNConfig:
 
 
 def build_qnn(config: QNNConfig):
-    """Build a QNN (circuit + initial params). The trainer wraps this."""
+    """Build a QNN (circuit + initial params). The trainer wraps this.
+
+    The trainable vector is laid out as [quantum_params | w (n_qubits) | b (1)]:
+    quantum params feed the circuit, the linear-head params (w, b) turn the
+    per-qubit <Z_i> vector into one logit. n_params covers BOTH parts.
+    """
     circuit, param_shape = build_qnode(
         config.encoding, config.ansatz, config.n_qubits, config.depth,
         config.device_name, config.angle_clip,
     )
+    n_quantum_params = int(np.prod(param_shape))
+    n_head_params = config.n_qubits + 1  # w (n_qubits) + b (1)
     return {
         "circuit": circuit,
         "param_shape": param_shape,
-        "n_params": int(np.prod(param_shape)),
+        "n_quantum_params": n_quantum_params,
+        "n_head_params": n_head_params,
+        "n_qubits": config.n_qubits,
+        "n_params": n_quantum_params + n_head_params,
         "config": config,
     }

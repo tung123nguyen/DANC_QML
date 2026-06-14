@@ -32,18 +32,28 @@ except ImportError:
 log = logging.getLogger(__name__)
 
 
-def _expval_to_prob(z):
-    """Map Pauli-Z expectation in [-1, 1] to probability in [0, 1]."""
-    return (1.0 + z) / 2.0
+def _circuit_prob(params, circuit, x, n_quantum, n_qubits):
+    """Run the circuit + linear head -> probability in [0, 1].
+
+    params is the flat vector [quantum_params | w (n_qubits) | b (1)]. The
+    circuit returns <Z_i> on every qubit; the head maps that vector to one
+    logit and a sigmoid turns it into a probability. Written with pennylane
+    numpy (pnp) so gradients flow to BOTH quantum params and head (w, b).
+    """
+    q_params = params[:n_quantum]
+    w = params[n_quantum:n_quantum + n_qubits]
+    b = params[n_quantum + n_qubits]
+    z = pnp.stack(circuit(q_params, x))      # (n_qubits,) <Z_i> in [-1, 1]
+    logit = pnp.dot(z, w) + b
+    return 1.0 / (1.0 + pnp.exp(-logit))     # sigmoid -> [0, 1]
 
 
-def _bce_loss(params, circuit, X, y):
+def _bce_loss(params, circuit, X, y, n_quantum, n_qubits):
     """Binary cross-entropy on a batch."""
     n = X.shape[0]
     total = 0.0
     for i in range(n):
-        z = circuit(params, X[i])
-        p = _expval_to_prob(z)
+        p = _circuit_prob(params, circuit, X[i], n_quantum, n_qubits)
         p = pnp.clip(p, 1e-7, 1 - 1e-7)
         total = total + (-y[i] * pnp.log(p) - (1 - y[i]) * pnp.log(1 - p))
     return total / n
@@ -65,9 +75,13 @@ def train_qnn(
 
     circuit = qnn["circuit"]
     n_params = qnn["n_params"]
+    n_quantum = qnn["n_quantum_params"]
+    n_qubits = qnn["n_qubits"]
 
     rng = np.random.default_rng(seed)
-    params = pnp.array(rng.uniform(-0.1, 0.1, n_params), requires_grad=True)
+    init = rng.uniform(-0.1, 0.1, n_params)
+    init[-1] = 0.0  # linear-head bias b -> logit ~ 0 -> p ~ 0.5 at init
+    params = pnp.array(init, requires_grad=True)
 
     optimizer = qml.AdamOptimizer(stepsize=learning_rate)
     # params is the first argument of _bce_loss and is marked requires_grad=True
@@ -97,13 +111,13 @@ def train_qnn(
 
             # Gradient (separate from step so we can log per-batch stats)
             if log_gradients:
-                g = np.asarray(grad_fn(params, circuit, xb, yb))
+                g = np.asarray(grad_fn(params, circuit, xb, yb, n_quantum, n_qubits))
                 batch_grad_norms.append(float(np.linalg.norm(g)))
                 batch_grad_vars.append(float(np.var(g)))
                 batch_grad_meanabs.append(float(np.mean(np.abs(g))))
 
             params, batch_loss = optimizer.step_and_cost(
-                lambda p: _bce_loss(p, circuit, xb, yb), params
+                lambda p: _bce_loss(p, circuit, xb, yb, n_quantum, n_qubits), params
             )
             epoch_loss += float(batch_loss)
             n_batches += 1
@@ -112,7 +126,7 @@ def train_qnn(
 
         # Train accuracy at end of epoch
         preds = np.array([
-            1 if _expval_to_prob(float(circuit(params, X_train[i]))) > 0.5 else 0
+            1 if float(_circuit_prob(params, circuit, X_train[i], n_quantum, n_qubits)) > 0.5 else 0
             for i in range(n)
         ])
         train_acc = float((preds == y_train).mean())
@@ -153,8 +167,11 @@ def train_qnn(
 def qnn_predict(qnn: dict, params, X: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Predict labels and probabilities."""
     circuit = qnn["circuit"]
+    n_quantum = qnn["n_quantum_params"]
+    n_qubits = qnn["n_qubits"]
     probs = np.array([
-        _expval_to_prob(float(circuit(params, X[i]))) for i in range(X.shape[0])
+        float(_circuit_prob(params, circuit, X[i], n_quantum, n_qubits))
+        for i in range(X.shape[0])
     ])
     preds = (probs > 0.5).astype(int)
     return preds, probs
