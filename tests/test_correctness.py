@@ -199,3 +199,37 @@ def test_metrics_precision_attack():
     m = compute_metrics(y_true, y_pred)
     assert abs(m["precision_attack"] - 2 / 4) < 1e-9
     assert abs(m["recall_attack"] - 2 / 3) < 1e-9
+
+
+# ---------------------------------------------------------------------------
+# QNN angle encoding normalisation
+# ---------------------------------------------------------------------------
+
+from src.models.qnn import _scale_to_angle
+
+
+def test_scale_to_angle_maps_clip_to_pi():
+    """+/-angle_clip sigma (and beyond) must map to +/-pi exactly."""
+    out = _scale_to_angle(np.array([3.0, -3.0, 10.0, -50.0]), angle_clip=3.0)
+    np.testing.assert_allclose(out, [np.pi, -np.pi, np.pi, -np.pi], rtol=1e-12)
+
+
+def test_scale_to_angle_linear_region():
+    """0 -> 0 and c/2 -> pi/2 inside the linear region."""
+    out = _scale_to_angle(np.array([0.0, 1.5]), angle_clip=3.0)
+    np.testing.assert_allclose(out, [0.0, np.pi / 2], rtol=1e-12)
+
+
+def test_scale_to_angle_stays_within_pi():
+    """No output may fall outside [-pi, pi], even for wild outliers."""
+    x = np.array([0.5, 8.0, -1000.0, 2.99, -2.99])
+    out = np.asarray(_scale_to_angle(x, angle_clip=3.0))
+    assert out.max() <= np.pi + 1e-12
+    assert out.min() >= -np.pi - 1e-12
+
+
+def test_scale_to_angle_disabled_passthrough():
+    """Falsy angle_clip disables the transform (reproduces raw encoding)."""
+    x = np.array([0.5, 8.0, -50.0])
+    np.testing.assert_array_equal(_scale_to_angle(x, angle_clip=None), x)
+    np.testing.assert_array_equal(_scale_to_angle(x, angle_clip=0), x)

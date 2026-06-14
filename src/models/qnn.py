@@ -15,6 +15,15 @@ PARAM SHAPE NOTES:
 Re-uploading repeats (encoding + ansatz) `depth` times. With angle encoding
 only the ansatz is repeated.
 
+ENCODING NORMALISATION (angle_clip):
+    Features arrive StandardScaler'd (mean 0, std 1), so their range is ~[-3, 3]
+    with heavier outliers. Feeding them straight into RY angles is unsafe: RY is
+    2*pi periodic, so a value like 30 wraps around to ~0 and collapses distinct
+    inputs. We therefore clip to [-angle_clip, +angle_clip] sigma and linearly
+    scale so +/-angle_clip*sigma maps to +/-pi, keeping every angle inside
+    [-pi, pi]. Default angle_clip=3.0 keeps ~99.7% of Gaussian data in the
+    linear region; set it to None/0 to disable (reproduces the old raw encoding).
+
 Output: single Pauli-Z expectation on qubit 0, mapped to [0, 1] by (1+z)/2.
 """
 from __future__ import annotations
@@ -23,13 +32,27 @@ import numpy as np
 
 try:
     import pennylane as qml
-    from pennylane import numpy as pnp
     PENNYLANE_AVAILABLE = True
 except ImportError:
     PENNYLANE_AVAILABLE = False
 
 
-def _angle_embed(x, n_qubits):
+def _scale_to_angle(x, angle_clip):
+    """Map StandardScaler output (in sigma units) to angles in [-pi, pi].
+
+    Clip to [-angle_clip, angle_clip] sigma, then scale linearly so that
+    +/-angle_clip maps to +/-pi. A falsy angle_clip (None or 0) disables the
+    transform and returns x unchanged (reproduces the old raw encoding).
+    """
+    if not angle_clip:
+        return x
+    # x is data (never differentiated), so plain numpy is safe here and keeps
+    # this helper testable without a pennylane import.
+    return np.clip(x, -angle_clip, angle_clip) * (np.pi / angle_clip)
+
+
+def _angle_embed(x, n_qubits, angle_clip=3.0):
+    x = _scale_to_angle(x, angle_clip)
     qml.AngleEmbedding(x, wires=range(n_qubits), rotation="Y")
 
 
@@ -66,10 +89,11 @@ def _params_per_layer(ansatz: str, n_qubits: int) -> int:
     raise ValueError(ansatz)
 
 
-def build_qnode(encoding: str, ansatz: str, n_qubits: int, depth: int, device_name: str = "default.qubit"):
+def build_qnode(encoding: str, ansatz: str, n_qubits: int, depth: int, device_name: str = "default.qubit", angle_clip: float = 3.0):
     """Build the QNode and return (qnode, param_shape).
 
     The returned qnode takes (params_flat, x) and returns a Pauli-Z expectation.
+    angle_clip controls the [-pi, pi] encoding normalisation (see module docstring).
     """
     if not PENNYLANE_AVAILABLE:
         raise ImportError("Install pennylane: pip install pennylane")
@@ -83,7 +107,7 @@ def build_qnode(encoding: str, ansatz: str, n_qubits: int, depth: int, device_na
 
         @qml.qnode(dev, interface="autograd")
         def circuit(params, x):
-            _angle_embed(x, n_qubits)
+            _angle_embed(x, n_qubits, angle_clip)
             for d in range(depth):
                 layer_params = params[d * ppl: (d + 1) * ppl]
                 _apply_ansatz(layer_params, ansatz, n_qubits)
@@ -96,7 +120,7 @@ def build_qnode(encoding: str, ansatz: str, n_qubits: int, depth: int, device_na
         @qml.qnode(dev, interface="autograd")
         def circuit(params, x):
             for d in range(depth):
-                _angle_embed(x, n_qubits)
+                _angle_embed(x, n_qubits, angle_clip)
                 layer_params = params[d * ppl: (d + 1) * ppl]
                 _apply_ansatz(layer_params, ansatz, n_qubits)
             return qml.expval(qml.PauliZ(0))
@@ -114,12 +138,14 @@ class QNNConfig:
     n_qubits: int
     depth: int
     device_name: str = "default.qubit"
+    angle_clip: float = 3.0
 
 
 def build_qnn(config: QNNConfig):
     """Build a QNN (circuit + initial params). The trainer wraps this."""
     circuit, param_shape = build_qnode(
-        config.encoding, config.ansatz, config.n_qubits, config.depth, config.device_name
+        config.encoding, config.ansatz, config.n_qubits, config.depth,
+        config.device_name, config.angle_clip,
     )
     return {
         "circuit": circuit,

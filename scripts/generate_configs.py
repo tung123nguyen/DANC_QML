@@ -33,6 +33,7 @@ QNN_EPOCHS = 80
 QNN_LR = 0.05
 QNN_BATCH = 32
 QNN_DEVICE = "lightning.qubit"  # change to "lightning.gpu" on Colab GPU
+QNN_ANGLE_CLIP = 3.0  # clip StandardScaler features to +/-3 sigma, scale to [-pi, pi]
 
 
 # =========================================================================
@@ -75,6 +76,7 @@ def build_qnn_config(qnn_id, encoding, ansatz, scenario, train_n, seed):
             "n_qubits": N_FEATURES,
             "depth": QNN_DEPTH,
             "device": QNN_DEVICE,
+            "angle_clip": QNN_ANGLE_CLIP,
         },
         "training": {
             "epochs": QNN_EPOCHS,

@@ -85,6 +85,7 @@ def run_qnn(config: dict, data: dict) -> dict:
         n_qubits=config["model"]["n_qubits"],
         depth=config["model"]["depth"],
         device_name=config["model"].get("device", "default.qubit"),
+        angle_clip=config["model"].get("angle_clip", 3.0),
     )
     qnn = build_qnn(qnn_cfg)
 

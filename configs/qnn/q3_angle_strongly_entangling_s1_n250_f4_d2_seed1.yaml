@@ -12,7 +12,8 @@ model:
   ansatz: strongly_entangling
   n_qubits: 4
   depth: 2
-  device: default.qubit
+  device: lightning.qubit
+  angle_clip: 3.0
 training:
   epochs: 80
   learning_rate: 0.05
