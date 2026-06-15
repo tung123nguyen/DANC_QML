@@ -1,0 +1,4 @@
+2026-06-15 10:14:23,372 | INFO | experiment | Starting run: 2026-06-15_10-14-23_q4_reuploading_basic_entangler_s1_n500_f4_d4_seed0
+2026-06-15 10:14:23,372 | INFO | experiment | Config: configs\qnn\q4_reuploading_basic_entangler_s1_n500_f4_d4_seed0.yaml
+2026-06-15 10:14:25,770 | INFO | experiment | Data ready: train=(1000, 4), test=(1000, 4)
+2026-06-15 10:49:01,607 | INFO | experiment | Done. test_f1=0.9174, time=2071.8s

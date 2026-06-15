@@ -1,0 +1,4 @@
+2026-06-15 09:49:13,878 | INFO | experiment | Starting run: 2026-06-15_09-49-13_q3_angle_strongly_entangling_s1_n500_f4_d4_seed0
+2026-06-15 09:49:13,878 | INFO | experiment | Config: configs\qnn\q3_angle_strongly_entangling_s1_n500_f4_d4_seed0.yaml
+2026-06-15 09:49:16,641 | INFO | experiment | Data ready: train=(1000, 4), test=(1000, 4)
+2026-06-15 10:01:03,846 | INFO | experiment | Done. test_f1=0.7836, time=688.9s

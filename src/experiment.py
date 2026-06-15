@@ -86,6 +86,7 @@ def run_qnn(config: dict, data: dict) -> dict:
         depth=config["model"]["depth"],
         device_name=config["model"].get("device", "default.qubit"),
         angle_clip=config["model"].get("angle_clip", 3.0),
+        trainable_scale=config["model"].get("trainable_scale", False),
     )
     qnn = build_qnn(qnn_cfg)
 
@@ -97,6 +98,9 @@ def run_qnn(config: dict, data: dict) -> dict:
         batch_size=config["training"]["batch_size"],
         log_gradients=config["evaluation"].get("log_gradients", True),
         seed=config["experiment"]["seed"],
+        early_stopping=config["training"].get("early_stopping", True),
+        val_fraction=config["training"].get("val_fraction", 0.2),
+        patience=config["training"].get("patience", 15),
     )
     params = train_log["params"]
 

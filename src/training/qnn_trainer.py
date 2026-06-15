@@ -66,8 +66,20 @@ def train_qnn(
     batch_size: int = 32,
     log_gradients: bool = True,
     seed: int = 0,
+    early_stopping: bool = True,
+    val_fraction: float = 0.2,
+    patience: int = 15,
+    min_delta: float = 0.0,
 ) -> dict:
-    """Train a QNN with mini-batch Adam."""
+    """Train a QNN with mini-batch Adam.
+
+    Early stopping (on by default): carve a stratified ``val_fraction`` slice out
+    of (X_train, y_train), train on the rest, and monitor validation BCE each
+    epoch. If it does not improve by ``min_delta`` for ``patience`` epochs, stop
+    and RESTORE the best-val params (so we never return a collapsed model). The
+    held-out test set is untouched. Set early_stopping=False to train the full
+    ``epochs`` on all of X_train (old behaviour).
+    """
     if not PENNYLANE_AVAILABLE:
         raise ImportError("Install pennylane: pip install pennylane")
 
@@ -76,20 +88,40 @@ def train_qnn(
     n_quantum = qnn["n_quantum_params"]
     n_qubits = qnn["n_qubits"]
 
+    n_scale = qnn.get("n_scale_params", 0)
+
     rng = np.random.default_rng(seed)
     init = rng.uniform(-0.1, 0.1, n_params)
+    if n_scale:
+        init[:n_scale] = 1.0  # trainable input scale starts at 1 (== fixed encoding)
     init[-1] = 0.0  # linear-head bias b -> logit ~ 0 -> p ~ 0.5 at init
     params = pnp.array(init, requires_grad=True)
 
     optimizer = qml.AdamOptimizer(stepsize=learning_rate)
 
-    n = X_train.shape[0]
+    # Early stopping: hold out a stratified validation slice; train on the rest.
+    use_es = bool(early_stopping) and val_fraction and 0.0 < val_fraction < 1.0
+    if use_es:
+        from sklearn.model_selection import train_test_split
+        X_fit, X_val, y_fit, y_val = train_test_split(
+            X_train, y_train, test_size=val_fraction,
+            stratify=y_train, random_state=seed,
+        )
+    else:
+        X_fit, y_fit, X_val, y_val = X_train, y_train, None, None
+
+    best_val = np.inf
+    best_params = None
+    epochs_no_improve = 0
+    stopped_epoch = None
+
+    n = X_fit.shape[0]
     history = []
     t0 = time.time()
 
     for epoch in range(epochs):
         perm = rng.permutation(n)
-        X_shuf, y_shuf = X_train[perm], y_train[perm]
+        X_shuf, y_shuf = X_fit[perm], y_fit[perm]
 
         epoch_loss = 0.0
         batch_grad_norms = []
@@ -133,10 +165,27 @@ def train_qnn(
         report_epoch = (epoch % 10 == 0) or (epoch == epochs - 1)
         if report_epoch:
             probs = np.asarray(
-                _circuit_probs(params, circuit, X_train, n_quantum, n_qubits), dtype=float
+                _circuit_probs(params, circuit, X_fit, n_quantum, n_qubits), dtype=float
             )
-            train_acc = float(((probs > 0.5).astype(int) == y_train).mean())
+            train_acc = float(((probs > 0.5).astype(int) == y_fit).mean())
             row["train_acc"] = train_acc
+
+        # Early stopping: track validation BCE every epoch (cheap, vectorised),
+        # keep the best-val params, and count epochs without improvement.
+        if use_es:
+            val_loss = float(_bce_loss(params, circuit, X_val, y_val, n_quantum, n_qubits))
+            row["val_loss"] = val_loss
+            if report_epoch:
+                vprobs = np.asarray(
+                    _circuit_probs(params, circuit, X_val, n_quantum, n_qubits), dtype=float
+                )
+                row["val_acc"] = float(((vprobs > 0.5).astype(int) == y_val).mean())
+            if val_loss < best_val - min_delta:
+                best_val = val_loss
+                best_params = np.asarray(params).copy()
+                epochs_no_improve = 0
+            else:
+                epochs_no_improve += 1
 
         if log_gradients and batch_grad_norms:
             # MEAN over batches (not just last batch)
@@ -156,6 +205,18 @@ def train_qnn(
                 f" grad_norm_mean={row.get('grad_norm_mean', 0):.4f}" if log_gradients else "",
             )
 
+        if use_es and epochs_no_improve >= patience:
+            stopped_epoch = epoch
+            log.info(
+                "early stop at epoch %d (best val_loss=%.4f); restoring best params",
+                epoch, best_val,
+            )
+            break
+
+    # Restore the best-val params (never return a worse / collapsed model).
+    if use_es and best_params is not None:
+        params = pnp.array(best_params, requires_grad=True)
+
     duration = time.time() - t0
 
     return {
@@ -163,6 +224,8 @@ def train_qnn(
         "history": history,
         "train_time_seconds": duration,
         "n_params": n_params,
+        "stopped_epoch": stopped_epoch,
+        "best_val_loss": (best_val if use_es else None),
     }
 
 

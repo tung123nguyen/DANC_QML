@@ -57,8 +57,14 @@ def _scale_to_angle(x, angle_clip):
     return np.clip(x, -angle_clip, angle_clip) * (np.pi / angle_clip)
 
 
-def _angle_embed(x, n_qubits, angle_clip=3.0):
+def _angle_embed(x, n_qubits, angle_clip=3.0, scale=None):
     x = _scale_to_angle(x, angle_clip)
+    if scale is not None:
+        # Trainable input scaling (Form A): a learnable per-qubit weight on the
+        # encoding angle. RY(s_i * angle_i) lets the model pick each feature's
+        # frequency instead of the fixed unit scale. s starts at 1.0, so a fresh
+        # trainable-scale model behaves identically to the fixed encoding.
+        x = x * scale
     qml.AngleEmbedding(x, wires=range(n_qubits), rotation="Y")
 
 
@@ -95,40 +101,48 @@ def _params_per_layer(ansatz: str, n_qubits: int) -> int:
     raise ValueError(ansatz)
 
 
-def build_qnode(encoding: str, ansatz: str, n_qubits: int, depth: int, device_name: str = "default.qubit", angle_clip: float = 3.0):
+def build_qnode(encoding: str, ansatz: str, n_qubits: int, depth: int, device_name: str = "default.qubit", angle_clip: float = 3.0, trainable_scale: bool = False):
     """Build the QNode and return (qnode, param_shape).
 
-    The returned qnode takes (quantum_params, x) and returns a list of <Z_i>
+    The returned qnode takes (circuit_params, x) and returns a list of <Z_i>
     expectations, one per qubit (the linear head lives in the trainer).
+    circuit_params is laid out as [scale (n_qubits, if trainable_scale) | ansatz].
     angle_clip controls the [-pi, pi] encoding normalisation (see module docstring).
+    trainable_scale prepends a learnable per-qubit input scale (Form A feature map).
     """
     if not PENNYLANE_AVAILABLE:
         raise ImportError("Install pennylane: pip install pennylane")
 
     dev = qml.device(device_name, wires=n_qubits)
     ppl = _params_per_layer(ansatz, n_qubits)
+    n_scale = n_qubits if trainable_scale else 0
+    total_params = n_scale + depth * ppl
+
+    def _split(params):
+        """Return (scale_or_None, ansatz_params) from the flat circuit params."""
+        if trainable_scale:
+            return params[:n_scale], params[n_scale:]
+        return None, params
 
     if encoding == "angle":
         # Encode once, then `depth` ansatz layers
-        total_params = depth * ppl
-
         @qml.qnode(dev, interface="autograd")
         def circuit(params, x):
-            _angle_embed(x, n_qubits, angle_clip)
+            scale, aparams = _split(params)
+            _angle_embed(x, n_qubits, angle_clip, scale)
             for d in range(depth):
-                layer_params = params[d * ppl: (d + 1) * ppl]
+                layer_params = aparams[d * ppl: (d + 1) * ppl]
                 _apply_ansatz(layer_params, ansatz, n_qubits)
             return [qml.expval(qml.PauliZ(i)) for i in range(n_qubits)]
 
     elif encoding == "reuploading":
         # Repeat (encode + ansatz) `depth` times
-        total_params = depth * ppl
-
         @qml.qnode(dev, interface="autograd")
         def circuit(params, x):
+            scale, aparams = _split(params)
             for d in range(depth):
-                _angle_embed(x, n_qubits, angle_clip)
-                layer_params = params[d * ppl: (d + 1) * ppl]
+                _angle_embed(x, n_qubits, angle_clip, scale)
+                layer_params = aparams[d * ppl: (d + 1) * ppl]
                 _apply_ansatz(layer_params, ansatz, n_qubits)
             return [qml.expval(qml.PauliZ(i)) for i in range(n_qubits)]
 
@@ -146,25 +160,31 @@ class QNNConfig:
     depth: int
     device_name: str = "default.qubit"
     angle_clip: float = 3.0
+    trainable_scale: bool = False
 
 
 def build_qnn(config: QNNConfig):
     """Build a QNN (circuit + initial params). The trainer wraps this.
 
-    The trainable vector is laid out as [quantum_params | w (n_qubits) | b (1)]:
-    quantum params feed the circuit, the linear-head params (w, b) turn the
-    per-qubit <Z_i> vector into one logit. n_params covers BOTH parts.
+    The trainable vector is laid out as
+        [scale (n_qubits, if trainable_scale) | ansatz | w (n_qubits) | b (1)]
+    where [scale | ansatz] = circuit params (n_quantum_params) feed the circuit
+    and the linear-head params (w, b) turn the per-qubit <Z_i> vector into one
+    logit. n_params covers ALL parts. n_scale_params marks the leading scale
+    block so the trainer can initialise it to 1.0.
     """
     circuit, param_shape = build_qnode(
         config.encoding, config.ansatz, config.n_qubits, config.depth,
-        config.device_name, config.angle_clip,
+        config.device_name, config.angle_clip, config.trainable_scale,
     )
     n_quantum_params = int(np.prod(param_shape))
+    n_scale_params = config.n_qubits if config.trainable_scale else 0
     n_head_params = config.n_qubits + 1  # w (n_qubits) + b (1)
     return {
         "circuit": circuit,
         "param_shape": param_shape,
         "n_quantum_params": n_quantum_params,
+        "n_scale_params": n_scale_params,
         "n_head_params": n_head_params,
         "n_qubits": config.n_qubits,
         "n_params": n_quantum_params + n_head_params,

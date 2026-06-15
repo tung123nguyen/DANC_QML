@@ -1,0 +1,8 @@
+{
+  "git_commit": "9be1d36c43d05c68f00878edc6498873ad70274d",
+  "config_path": "configs\\qnn\\q4_reuploading_basic_entangler_s1_n500_f4_d4_es_seed0.yaml",
+  "start_time": "2026-06-15T12:09:35",
+  "smoke_test": false,
+  "end_time": "2026-06-15T12:13:35",
+  "test_f1": 0.9157509157509157
+}
