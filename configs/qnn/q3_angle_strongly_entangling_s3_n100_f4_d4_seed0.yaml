@@ -19,4 +19,4 @@ training:
   learning_rate: 0.05
   batch_size: 32
 evaluation:
-  log_gradients: true
+  log_gradients: false

@@ -34,6 +34,13 @@ QNN_LR = 0.05
 QNN_BATCH = 32
 QNN_DEVICE = "lightning.qubit"  # change to "lightning.gpu" on Colab GPU
 QNN_ANGLE_CLIP = 3.0  # clip StandardScaler features to +/-3 sigma, scale to [-pi, pi]
+QNN_LOG_GRADIENTS = False  # gradient stats OFF for the sweep (we compare F1/acc, not grads)
+
+# A small diagnostic subset re-enables gradient logging for barren-plateau analysis.
+# Written to configs/qnn_diag/ with a '_diag' name suffix so it never collides with
+# the sweep's already_done() bookkeeping.
+DIAG_SCENARIO = "S1"
+DIAG_TRAIN_N = 250
 
 
 # =========================================================================
@@ -56,7 +63,8 @@ def build_classical_config(model_name, scenario, train_n, seed):
     }
 
 
-def build_qnn_config(qnn_id, encoding, ansatz, scenario, train_n, seed):
+def build_qnn_config(qnn_id, encoding, ansatz, scenario, train_n, seed,
+                     log_gradients=QNN_LOG_GRADIENTS):
     name = (
         f"{qnn_id}_{encoding}_{ansatz}_{scenario.lower()}"
         f"_n{train_n}_f{N_FEATURES}_d{QNN_DEPTH}"
@@ -83,7 +91,7 @@ def build_qnn_config(qnn_id, encoding, ansatz, scenario, train_n, seed):
             "learning_rate": QNN_LR,
             "batch_size": QNN_BATCH,
         },
-        "evaluation": {"log_gradients": True},
+        "evaluation": {"log_gradients": log_gradients},
     }
 
 
@@ -115,9 +123,21 @@ def main():
         write_config(cfg, "qnn")
         n_qnn += 1
 
+    # Diagnostic subset: a few QNN runs WITH gradient logging on (barren-plateau).
+    n_qnn_diag = 0
+    for (qnn_id, enc, ansatz), seed in product(QNN_MODELS, SEEDS):
+        cfg = build_qnn_config(
+            qnn_id, enc, ansatz, DIAG_SCENARIO, DIAG_TRAIN_N, seed,
+            log_gradients=True,
+        )
+        cfg["experiment"]["name"] += "_diag"
+        write_config(cfg, "qnn_diag")
+        n_qnn_diag += 1
+
     print(f"Generated {n_classical} classical configs")
-    print(f"Generated {n_qnn} QNN configs")
-    print(f"Total: {n_classical + n_qnn} experiments")
+    print(f"Generated {n_qnn} QNN configs (log_gradients={QNN_LOG_GRADIENTS})")
+    print(f"Generated {n_qnn_diag} QNN diagnostic configs (log_gradients=True)")
+    print(f"Total: {n_classical + n_qnn + n_qnn_diag} experiments")
     print(f"\nTest set is FIXED at {TEST_SAMPLE_SIZE} samples/class for all configs.")
     print(f"Train sizes vary: {TRAIN_SAMPLE_SIZES}")
 

@@ -1,14 +1,14 @@
 experiment:
-  name: q2_angle_basic_entangler_s1_n100_f4_d4
-  seed: 0
+  name: q4_reuploading_basic_entangler_s1_n250_f4_d4_diag
+  seed: 2
 data:
   scenario: S1
-  train_samples_per_class: 100
+  train_samples_per_class: 250
   test_samples_per_class: 500
   n_features: 4
 model:
   type: qnn
-  encoding: angle
+  encoding: reuploading
   ansatz: basic_entangler
   n_qubits: 4
   depth: 4
@@ -19,4 +19,4 @@ training:
   learning_rate: 0.05
   batch_size: 32
 evaluation:
-  log_gradients: false
+  log_gradients: true
