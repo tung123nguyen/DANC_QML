@@ -1,0 +1,14 @@
+experiment:
+  name: mlp_s3_n100_f4
+  seed: 4
+data:
+  scenario: S3
+  train_samples_per_class: 100
+  test_samples_per_class: 500
+  n_features: 4
+model:
+  type: classical
+  name: mlp
+training: {}
+evaluation:
+  log_gradients: false

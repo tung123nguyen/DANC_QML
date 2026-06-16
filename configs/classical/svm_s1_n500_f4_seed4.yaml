@@ -1,0 +1,14 @@
+experiment:
+  name: svm_s1_n500_f4
+  seed: 4
+data:
+  scenario: S1
+  train_samples_per_class: 500
+  test_samples_per_class: 500
+  n_features: 4
+model:
+  type: classical
+  name: svm
+training: {}
+evaluation:
+  log_gradients: false

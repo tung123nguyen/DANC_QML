@@ -86,6 +86,13 @@ def main():
     if len(df) < n_before:
         print(f"Dropped {n_before - len(df)} duplicate run(s)")
 
+    # Strip the leading "YYYY-MM-DD_HH-MM-SS_" timestamp from the run name so
+    # the CSV shows clean config identifiers. Done after dedup, which needs the
+    # timestamp to sort the newest duplicate last.
+    df["run"] = df["run"].str.replace(
+        r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_", "", regex=True
+    )
+
     df.to_csv(args.output, index=False)
     print(f"Wrote {len(df)} rows to {args.output}")
 

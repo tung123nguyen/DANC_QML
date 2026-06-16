@@ -18,7 +18,7 @@ SCENARIOS = ["S1", "S3"]
 TRAIN_SAMPLE_SIZES = [100, 250, 500]   # samples per class IN TRAIN SET
 TEST_SAMPLE_SIZE = 500                  # fixed test size per class
 N_FEATURES = 4
-SEEDS = [0, 1, 2]
+SEEDS = [0, 1, 2, 3, 4]
 
 CLASSICAL_MODELS = ["lr", "svm", "rf", "mlp"]
 

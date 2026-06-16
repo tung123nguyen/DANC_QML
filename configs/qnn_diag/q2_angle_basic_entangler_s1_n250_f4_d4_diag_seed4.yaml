@@ -1,0 +1,22 @@
+experiment:
+  name: q2_angle_basic_entangler_s1_n250_f4_d4_diag
+  seed: 4
+data:
+  scenario: S1
+  train_samples_per_class: 250
+  test_samples_per_class: 500
+  n_features: 4
+model:
+  type: qnn
+  encoding: angle
+  ansatz: basic_entangler
+  n_qubits: 4
+  depth: 4
+  device: lightning.qubit
+  angle_clip: 3.0
+training:
+  epochs: 80
+  learning_rate: 0.05
+  batch_size: 32
+evaluation:
+  log_gradients: true
