@@ -101,14 +101,51 @@ def _params_per_layer(ansatz: str, n_qubits: int) -> int:
     raise ValueError(ansatz)
 
 
-def build_qnode(encoding: str, ansatz: str, n_qubits: int, depth: int, device_name: str = "lightning.qubit", angle_clip: float = 3.0, trainable_scale: bool = False):
+def _observables(n_qubits: int, readout: str):
+    """Readout observables fed to the linear head (circuit depth unchanged).
+
+    'z'    : single-qubit <Z_i>                         -> n_qubits values
+    'z+zz' : <Z_i> plus all 2-qubit correlations <Z_iZ_j> -> n_qubits + C(n,2)
+    """
+    obs = [qml.PauliZ(i) for i in range(n_qubits)]
+    if readout == "z+zz":
+        obs += [qml.PauliZ(i) @ qml.PauliZ(j)
+                for i in range(n_qubits) for j in range(i + 1, n_qubits)]
+    elif readout != "z":
+        raise ValueError(f"Unknown readout: {readout}")
+    return obs
+
+
+def _n_observables(n_qubits: int, readout: str, readout_wires: int = 2) -> int:
+    """Linear-head input width = number of readout values."""
+    if readout == "probs":
+        return 2 ** readout_wires
+    if readout == "z+zz":
+        return n_qubits + n_qubits * (n_qubits - 1) // 2
+    return n_qubits
+
+
+def _measure(n_qubits: int, readout: str, readout_wires: int = 2):
+    """The qnode return: a list of <obs> expvals, or a basis-prob distribution.
+
+    readout='probs' returns P over the computational basis of the first
+    readout_wires qubits (2**readout_wires probabilities, summing to 1) -- a
+    single qml.probs measurement, not a list of expvals.
+    """
+    if readout == "probs":
+        return qml.probs(wires=range(readout_wires))
+    return [qml.expval(o) for o in _observables(n_qubits, readout)]
+
+
+def build_qnode(encoding: str, ansatz: str, n_qubits: int, depth: int, device_name: str = "lightning.qubit", angle_clip: float = 3.0, trainable_scale: bool = False, readout: str = "z", readout_wires: int = 2):
     """Build the QNode and return (qnode, param_shape).
 
-    The returned qnode takes (circuit_params, x) and returns a list of <Z_i>
-    expectations, one per qubit (the linear head lives in the trainer).
-    circuit_params is laid out as [scale (n_qubits, if trainable_scale) | ansatz].
+    The returned qnode takes (circuit_params, x) and returns a list of readout
+    expectations (the linear head lives in the trainer). circuit_params is laid
+    out as [scale (n_qubits, if trainable_scale) | ansatz].
     angle_clip controls the [-pi, pi] encoding normalisation (see module docstring).
     trainable_scale prepends a learnable per-qubit input scale (Form A feature map).
+    readout selects the observable set ('z' or 'z+zz', see _observables).
     """
     if not PENNYLANE_AVAILABLE:
         raise ImportError("Install pennylane: pip install pennylane")
@@ -133,7 +170,7 @@ def build_qnode(encoding: str, ansatz: str, n_qubits: int, depth: int, device_na
             for d in range(depth):
                 layer_params = aparams[d * ppl: (d + 1) * ppl]
                 _apply_ansatz(layer_params, ansatz, n_qubits)
-            return [qml.expval(qml.PauliZ(i)) for i in range(n_qubits)]
+            return _measure(n_qubits, readout, readout_wires)
 
     elif encoding == "reuploading":
         # Repeat (encode + ansatz) `depth` times
@@ -144,7 +181,7 @@ def build_qnode(encoding: str, ansatz: str, n_qubits: int, depth: int, device_na
                 _angle_embed(x, n_qubits, angle_clip, scale)
                 layer_params = aparams[d * ppl: (d + 1) * ppl]
                 _apply_ansatz(layer_params, ansatz, n_qubits)
-            return [qml.expval(qml.PauliZ(i)) for i in range(n_qubits)]
+            return _measure(n_qubits, readout, readout_wires)
 
     else:
         raise ValueError(f"Unknown encoding: {encoding}")
@@ -161,6 +198,8 @@ class QNNConfig:
     device_name: str = "lightning.qubit"
     angle_clip: float = 3.0
     trainable_scale: bool = False
+    readout: str = "z"
+    readout_wires: int = 2
 
 
 def build_qnn(config: QNNConfig):
@@ -176,15 +215,18 @@ def build_qnn(config: QNNConfig):
     circuit, param_shape = build_qnode(
         config.encoding, config.ansatz, config.n_qubits, config.depth,
         config.device_name, config.angle_clip, config.trainable_scale,
+        config.readout, config.readout_wires,
     )
     n_quantum_params = int(np.prod(param_shape))
     n_scale_params = config.n_qubits if config.trainable_scale else 0
-    n_head_params = config.n_qubits + 1  # w (n_qubits) + b (1)
+    n_obs = _n_observables(config.n_qubits, config.readout, config.readout_wires)  # head input width
+    n_head_params = n_obs + 1  # w (n_obs) + b (1)
     return {
         "circuit": circuit,
         "param_shape": param_shape,
         "n_quantum_params": n_quantum_params,
         "n_scale_params": n_scale_params,
+        "n_obs": n_obs,
         "n_head_params": n_head_params,
         "n_qubits": config.n_qubits,
         "n_params": n_quantum_params + n_head_params,

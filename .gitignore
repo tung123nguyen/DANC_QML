@@ -17,7 +17,7 @@ data/processed/
 results/
 *.parquet
 *.csv
-!configs/**/*.yaml
+
 
 # IDE
 .vscode/

@@ -32,27 +32,31 @@ except ImportError:
 log = logging.getLogger(__name__)
 
 
-def _circuit_probs(params, circuit, X, n_quantum, n_qubits):
+def _circuit_probs(params, circuit, X, n_quantum, n_obs):
     """Run circuit + linear head on a BATCH -> probabilities, shape (len(X),).
 
-    params is the flat vector [quantum_params | w (n_qubits) | b (1)]. X has
-    shape (B, n_qubits). PennyLane parameter broadcasting evaluates all B
-    samples in ONE circuit call (no Python loop): the qnode returns one (B,)
-    expectation per qubit, the linear head maps them to B logits and a sigmoid
-    to B probabilities. Written with pennylane numpy (pnp) so gradients flow to
-    BOTH quantum params and head (w, b).
+    params is the flat vector [quantum_params | w (n_obs) | b (1)]. X has shape
+    (B, n_qubits). PennyLane parameter broadcasting evaluates all B samples in
+    ONE circuit call (no Python loop): the qnode returns one (B,) value per
+    readout observable, the linear head maps the n_obs-vector to B logits and a
+    sigmoid to B probabilities. Written with pennylane numpy (pnp) so gradients
+    flow to BOTH quantum params and head (w, b). n_obs = number of observables
+    (n_qubits for 'z' readout, n_qubits + C(n,2) for 'z+zz').
     """
     q_params = params[:n_quantum]
-    w = params[n_quantum:n_quantum + n_qubits]
-    b = params[n_quantum + n_qubits]
-    z = pnp.stack(circuit(q_params, X))      # (n_qubits, B) <Z_i> in [-1, 1]
+    w = params[n_quantum:n_quantum + n_obs]
+    b = params[n_quantum + n_obs]
+    out = circuit(q_params, X)
+    # expval readout -> tuple of (B,) arrays -> stack to (n_obs, B);
+    # probs readout  -> single (B, n_obs) array -> transpose to (n_obs, B).
+    z = pnp.stack(out) if isinstance(out, (list, tuple)) else out.T
     logit = pnp.dot(w, z) + b                # (B,)
     return 1.0 / (1.0 + pnp.exp(-logit))     # sigmoid -> (B,)
 
 
-def _bce_loss(params, circuit, X, y, n_quantum, n_qubits):
+def _bce_loss(params, circuit, X, y, n_quantum, n_obs):
     """Mean binary cross-entropy over a batch (vectorised over samples)."""
-    p = _circuit_probs(params, circuit, X, n_quantum, n_qubits)
+    p = _circuit_probs(params, circuit, X, n_quantum, n_obs)
     p = pnp.clip(p, 1e-7, 1 - 1e-7)
     return pnp.mean(-y * pnp.log(p) - (1 - y) * pnp.log(1 - p))
 
@@ -86,7 +90,7 @@ def train_qnn(
     circuit = qnn["circuit"]
     n_params = qnn["n_params"]
     n_quantum = qnn["n_quantum_params"]
-    n_qubits = qnn["n_qubits"]
+    n_obs = qnn["n_obs"]
 
     n_scale = qnn.get("n_scale_params", 0)
 
@@ -134,7 +138,7 @@ def train_qnn(
             xb = X_shuf[start:end]
             yb = y_shuf[start:end]
 
-            obj = lambda p: _bce_loss(p, circuit, xb, yb, n_quantum, n_qubits)
+            obj = lambda p: _bce_loss(p, circuit, xb, yb, n_quantum, n_obs)
 
             if log_gradients:
                 # Compute the gradient ONCE and reuse it for BOTH the per-batch
@@ -165,7 +169,7 @@ def train_qnn(
         report_epoch = (epoch % 10 == 0) or (epoch == epochs - 1)
         if report_epoch:
             probs = np.asarray(
-                _circuit_probs(params, circuit, X_fit, n_quantum, n_qubits), dtype=float
+                _circuit_probs(params, circuit, X_fit, n_quantum, n_obs), dtype=float
             )
             train_acc = float(((probs > 0.5).astype(int) == y_fit).mean())
             row["train_acc"] = train_acc
@@ -173,11 +177,11 @@ def train_qnn(
         # Early stopping: track validation BCE every epoch (cheap, vectorised),
         # keep the best-val params, and count epochs without improvement.
         if use_es:
-            val_loss = float(_bce_loss(params, circuit, X_val, y_val, n_quantum, n_qubits))
+            val_loss = float(_bce_loss(params, circuit, X_val, y_val, n_quantum, n_obs))
             row["val_loss"] = val_loss
             if report_epoch:
                 vprobs = np.asarray(
-                    _circuit_probs(params, circuit, X_val, n_quantum, n_qubits), dtype=float
+                    _circuit_probs(params, circuit, X_val, n_quantum, n_obs), dtype=float
                 )
                 row["val_acc"] = float(((vprobs > 0.5).astype(int) == y_val).mean())
             if val_loss < best_val - min_delta:
@@ -233,9 +237,9 @@ def qnn_predict(qnn: dict, params, X: np.ndarray) -> tuple[np.ndarray, np.ndarra
     """Predict labels and probabilities."""
     circuit = qnn["circuit"]
     n_quantum = qnn["n_quantum_params"]
-    n_qubits = qnn["n_qubits"]
+    n_obs = qnn["n_obs"]
     probs = np.asarray(
-        _circuit_probs(params, circuit, X, n_quantum, n_qubits), dtype=float
+        _circuit_probs(params, circuit, X, n_quantum, n_obs), dtype=float
     )
     preds = (probs > 0.5).astype(int)
     return preds, probs
