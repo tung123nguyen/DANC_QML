@@ -101,7 +101,7 @@ def _params_per_layer(ansatz: str, n_qubits: int) -> int:
     raise ValueError(ansatz)
 
 
-def build_qnode(encoding: str, ansatz: str, n_qubits: int, depth: int, device_name: str = "default.qubit", angle_clip: float = 3.0, trainable_scale: bool = False):
+def build_qnode(encoding: str, ansatz: str, n_qubits: int, depth: int, device_name: str = "lightning.qubit", angle_clip: float = 3.0, trainable_scale: bool = False):
     """Build the QNode and return (qnode, param_shape).
 
     The returned qnode takes (circuit_params, x) and returns a list of <Z_i>
@@ -158,7 +158,7 @@ class QNNConfig:
     ansatz: str
     n_qubits: int
     depth: int
-    device_name: str = "default.qubit"
+    device_name: str = "lightning.qubit"
     angle_clip: float = 3.0
     trainable_scale: bool = False
 

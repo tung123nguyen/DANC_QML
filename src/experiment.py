@@ -84,7 +84,7 @@ def run_qnn(config: dict, data: dict) -> dict:
         ansatz=config["model"]["ansatz"],
         n_qubits=config["model"]["n_qubits"],
         depth=config["model"]["depth"],
-        device_name=config["model"].get("device", "default.qubit"),
+        device_name=config["model"].get("device", "lightning.qubit"),
         angle_clip=config["model"].get("angle_clip", 3.0),
         trainable_scale=config["model"].get("trainable_scale", False),
     )
