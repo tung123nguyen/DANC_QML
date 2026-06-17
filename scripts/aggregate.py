@@ -43,6 +43,8 @@ def collect_runs() -> pd.DataFrame:
             "ansatz": cfg["model"].get("ansatz", ""),
             "depth": cfg["model"].get("depth", ""),
             "n_qubits": cfg["model"].get("n_qubits", ""),
+            "readout": cfg["model"].get("readout", "z"),
+            "readout_wires": cfg["model"].get("readout_wires", ""),
         }
         for k, v in metrics.items():
             if k in ("train_confusion", "test_confusion"):
@@ -75,7 +77,7 @@ def main():
     # 'run' starts with a timestamp, so sorting by it puts newest last.
     dup_keys = [
         "scenario", "train_samples_per_class", "seed",
-        "model_type", "model_name", "encoding", "ansatz",
+        "model_type", "model_name", "encoding", "ansatz", "readout",
     ]
     n_before = len(df)
     df = (
@@ -98,7 +100,7 @@ def main():
 
     if "test_f1" in df.columns:
         print("\nTest F1 by model (mean over seeds):")
-        group_cols = ["model_type", "model_name", "encoding", "ansatz",
+        group_cols = ["model_type", "model_name", "encoding", "ansatz", "readout",
                       "scenario", "train_samples_per_class"]
         summary = (
             df.groupby(group_cols)["test_f1"]

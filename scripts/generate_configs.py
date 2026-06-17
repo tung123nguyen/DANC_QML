@@ -36,6 +36,14 @@ QNN_DEVICE = "lightning.qubit"  # change to "lightning.gpu" on Colab GPU
 QNN_ANGLE_CLIP = 3.0  # clip StandardScaler features to +/-3 sigma, scale to [-pi, pi]
 QNN_LOG_GRADIENTS = False  # gradient stats OFF for the sweep (we compare F1/acc, not grads)
 
+# Readout variants for the linear head (circuit unchanged, only what we measure).
+# Each is (name_suffix, extra model fields). "" = default single-qubit <Z_i> readout.
+QNN_READOUTS = [
+    ("", {}),                                              # z     : <Z_i>            (4-dim)
+    ("_zz", {"readout": "z+zz"}),                          # z+zz  : + <Z_iZ_j>       (10-dim)
+    ("_probs", {"readout": "probs", "readout_wires": 2}),  # probs : P over qubits 0,1 (4-dim)
+]
+
 # A small diagnostic subset re-enables gradient logging for barren-plateau analysis.
 # Written to configs/qnn_diag/ with a '_diag' name suffix so it never collides with
 # the sweep's already_done() bookkeeping.
@@ -64,11 +72,22 @@ def build_classical_config(model_name, scenario, train_n, seed):
 
 
 def build_qnn_config(qnn_id, encoding, ansatz, scenario, train_n, seed,
-                     log_gradients=QNN_LOG_GRADIENTS):
+                     log_gradients=QNN_LOG_GRADIENTS, name_suffix="", readout_model=None):
     name = (
         f"{qnn_id}_{encoding}_{ansatz}_{scenario.lower()}"
-        f"_n{train_n}_f{N_FEATURES}_d{QNN_DEPTH}"
+        f"_n{train_n}_f{N_FEATURES}_d{QNN_DEPTH}{name_suffix}"
     )
+    model = {
+        "type": "qnn",
+        "encoding": encoding,
+        "ansatz": ansatz,
+        "n_qubits": N_FEATURES,
+        "depth": QNN_DEPTH,
+        "device": QNN_DEVICE,
+        "angle_clip": QNN_ANGLE_CLIP,
+    }
+    if readout_model:
+        model.update(readout_model)  # e.g. {"readout": "z+zz"} or probs fields
     return {
         "experiment": {"name": name, "seed": seed},
         "data": {
@@ -77,15 +96,7 @@ def build_qnn_config(qnn_id, encoding, ansatz, scenario, train_n, seed,
             "test_samples_per_class": TEST_SAMPLE_SIZE,
             "n_features": N_FEATURES,
         },
-        "model": {
-            "type": "qnn",
-            "encoding": encoding,
-            "ansatz": ansatz,
-            "n_qubits": N_FEATURES,
-            "depth": QNN_DEPTH,
-            "device": QNN_DEVICE,
-            "angle_clip": QNN_ANGLE_CLIP,
-        },
+        "model": model,
         "training": {
             "epochs": QNN_EPOCHS,
             "learning_rate": QNN_LR,
@@ -119,9 +130,11 @@ def main():
     for (qnn_id, enc, ansatz), scenario, train_n, seed in product(
         QNN_MODELS, SCENARIOS, TRAIN_SAMPLE_SIZES, SEEDS
     ):
-        cfg = build_qnn_config(qnn_id, enc, ansatz, scenario, train_n, seed)
-        write_config(cfg, "qnn")
-        n_qnn += 1
+        for suffix, rmodel in QNN_READOUTS:
+            cfg = build_qnn_config(qnn_id, enc, ansatz, scenario, train_n, seed,
+                                   name_suffix=suffix, readout_model=rmodel)
+            write_config(cfg, "qnn")
+            n_qnn += 1
 
     # Diagnostic subset: a few QNN runs WITH gradient logging on (barren-plateau).
     n_qnn_diag = 0
@@ -135,7 +148,8 @@ def main():
         n_qnn_diag += 1
 
     print(f"Generated {n_classical} classical configs")
-    print(f"Generated {n_qnn} QNN configs (log_gradients={QNN_LOG_GRADIENTS})")
+    print(f"Generated {n_qnn} QNN configs "
+          f"({len(QNN_READOUTS)} readouts: {[s or 'z' for s, _ in QNN_READOUTS]})")
     print(f"Generated {n_qnn_diag} QNN diagnostic configs (log_gradients=True)")
     print(f"Total: {n_classical + n_qnn + n_qnn_diag} experiments")
     print(f"\nTest set is FIXED at {TEST_SAMPLE_SIZE} samples/class for all configs.")

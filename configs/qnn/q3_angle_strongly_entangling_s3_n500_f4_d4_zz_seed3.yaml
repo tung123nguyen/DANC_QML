@@ -1,0 +1,23 @@
+experiment:
+  name: q3_angle_strongly_entangling_s3_n500_f4_d4_zz
+  seed: 3
+data:
+  scenario: S3
+  train_samples_per_class: 500
+  test_samples_per_class: 500
+  n_features: 4
+model:
+  type: qnn
+  encoding: angle
+  ansatz: strongly_entangling
+  n_qubits: 4
+  depth: 4
+  device: lightning.qubit
+  angle_clip: 3.0
+  readout: z+zz
+training:
+  epochs: 80
+  learning_rate: 0.05
+  batch_size: 32
+evaluation:
+  log_gradients: false
