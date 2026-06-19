@@ -57,14 +57,13 @@ def _scale_to_angle(x, angle_clip):
     return np.clip(x, -angle_clip, angle_clip) * (np.pi / angle_clip)
 
 
-def _angle_embed(x, n_qubits, angle_clip=3.0, scale=None):
+def _angle_embed(x, n_qubits, angle_clip=3.0, affine=None):
     x = _scale_to_angle(x, angle_clip)
-    if scale is not None:
-        # Trainable input scaling (Form A): a learnable per-qubit weight on the
-        # encoding angle. RY(s_i * angle_i) lets the model pick each feature's
-        # frequency instead of the fixed unit scale. s starts at 1.0, so a fresh
-        # trainable-scale model behaves identically to the fixed encoding.
-        x = x * scale
+    if affine is not None:
+        # Trainable affine feature map (trainable_encoding): RY(a_i * angle_i + b_i).
+        # a starts at 1 and b at 0, so a fresh model matches the fixed RY(angle).
+        a, b = affine
+        x = x * a + b
     qml.AngleEmbedding(x, wires=range(n_qubits), rotation="Y")
 
 
@@ -137,36 +136,39 @@ def _measure(n_qubits: int, readout: str, readout_wires: int = 2):
     return [qml.expval(o) for o in _observables(n_qubits, readout)]
 
 
-def build_qnode(encoding: str, ansatz: str, n_qubits: int, depth: int, device_name: str = "lightning.qubit", angle_clip: float = 3.0, trainable_scale: bool = False, readout: str = "z", readout_wires: int = 2):
+def build_qnode(encoding: str, ansatz: str, n_qubits: int, depth: int, device_name: str = "lightning.qubit", angle_clip: float = 3.0, readout: str = "z", readout_wires: int = 2, trainable_encoding: bool = False):
     """Build the QNode and return (qnode, param_shape).
 
-    The returned qnode takes (circuit_params, x) and returns a list of readout
-    expectations (the linear head lives in the trainer). circuit_params is laid
-    out as [scale (n_qubits, if trainable_scale) | ansatz].
+    The returned qnode takes (circuit_params, x) and returns the readout
+    measurement (the linear head lives in the trainer). circuit_params is laid
+    out as [a (n_qubits) | b (n_qubits) | ansatz] when trainable_encoding is on,
+    else just [ansatz].
+      trainable_encoding -> learnable affine feature map RY(a*angle + b),
+                            a initialised to 1 and b to 0 so a fresh model
+                            matches the fixed RY(angle) encoding.
     angle_clip controls the [-pi, pi] encoding normalisation (see module docstring).
-    trainable_scale prepends a learnable per-qubit input scale (Form A feature map).
-    readout selects the observable set ('z' or 'z+zz', see _observables).
+    readout selects the observable set ('z'/'z+zz'/'probs', see _measure).
     """
     if not PENNYLANE_AVAILABLE:
         raise ImportError("Install pennylane: pip install pennylane")
 
     dev = qml.device(device_name, wires=n_qubits)
     ppl = _params_per_layer(ansatz, n_qubits)
-    n_scale = n_qubits if trainable_scale else 0
-    total_params = n_scale + depth * ppl
+    n_enc = 2 * n_qubits if trainable_encoding else 0  # affine [a (n_qubits) | b (n_qubits)]
+    total_params = n_enc + depth * ppl
 
     def _split(params):
-        """Return (scale_or_None, ansatz_params) from the flat circuit params."""
-        if trainable_scale:
-            return params[:n_scale], params[n_scale:]
+        """Return (affine_or_None, ansatz_params); affine = (a, b) per-qubit."""
+        if trainable_encoding:
+            return (params[:n_qubits], params[n_qubits:n_enc]), params[n_enc:]
         return None, params
 
     if encoding == "angle":
         # Encode once, then `depth` ansatz layers
         @qml.qnode(dev, interface="autograd")
         def circuit(params, x):
-            scale, aparams = _split(params)
-            _angle_embed(x, n_qubits, angle_clip, scale)
+            affine, aparams = _split(params)
+            _angle_embed(x, n_qubits, angle_clip, affine)
             for d in range(depth):
                 layer_params = aparams[d * ppl: (d + 1) * ppl]
                 _apply_ansatz(layer_params, ansatz, n_qubits)
@@ -176,9 +178,9 @@ def build_qnode(encoding: str, ansatz: str, n_qubits: int, depth: int, device_na
         # Repeat (encode + ansatz) `depth` times
         @qml.qnode(dev, interface="autograd")
         def circuit(params, x):
-            scale, aparams = _split(params)
+            affine, aparams = _split(params)
             for d in range(depth):
-                _angle_embed(x, n_qubits, angle_clip, scale)
+                _angle_embed(x, n_qubits, angle_clip, affine)
                 layer_params = aparams[d * ppl: (d + 1) * ppl]
                 _apply_ansatz(layer_params, ansatz, n_qubits)
             return _measure(n_qubits, readout, readout_wires)
@@ -197,28 +199,30 @@ class QNNConfig:
     depth: int
     device_name: str = "lightning.qubit"
     angle_clip: float = 3.0
-    trainable_scale: bool = False
     readout: str = "z"
     readout_wires: int = 2
+    trainable_encoding: bool = False
 
 
 def build_qnn(config: QNNConfig):
     """Build a QNN (circuit + initial params). The trainer wraps this.
 
     The trainable vector is laid out as
-        [scale (n_qubits, if trainable_scale) | ansatz | w (n_qubits) | b (1)]
-    where [scale | ansatz] = circuit params (n_quantum_params) feed the circuit
-    and the linear-head params (w, b) turn the per-qubit <Z_i> vector into one
-    logit. n_params covers ALL parts. n_scale_params marks the leading scale
-    block so the trainer can initialise it to 1.0.
+        [a (n_qubits) | b (n_qubits) | ansatz | w (n_obs) | head_b (1)]
+    where the leading [a | b] affine-encoding blocks exist only if
+    trainable_encoding is on. [a | b | ansatz] = circuit params (n_quantum_params)
+    feed the circuit; the linear-head params (w, head_b) turn the readout vector
+    into one logit. n_params covers ALL parts. n_scale_params / n_encbias_params
+    mark the a / b blocks so the trainer can initialise a to 1.0 and b to 0.0.
     """
     circuit, param_shape = build_qnode(
         config.encoding, config.ansatz, config.n_qubits, config.depth,
-        config.device_name, config.angle_clip, config.trainable_scale,
-        config.readout, config.readout_wires,
+        config.device_name, config.angle_clip, config.readout, config.readout_wires,
+        config.trainable_encoding,
     )
     n_quantum_params = int(np.prod(param_shape))
-    n_scale_params = config.n_qubits if config.trainable_scale else 0
+    n_scale_params = config.n_qubits if config.trainable_encoding else 0    # affine a (init 1)
+    n_encbias_params = config.n_qubits if config.trainable_encoding else 0  # affine b (init 0)
     n_obs = _n_observables(config.n_qubits, config.readout, config.readout_wires)  # head input width
     n_head_params = n_obs + 1  # w (n_obs) + b (1)
     return {
@@ -226,6 +230,7 @@ def build_qnn(config: QNNConfig):
         "param_shape": param_shape,
         "n_quantum_params": n_quantum_params,
         "n_scale_params": n_scale_params,
+        "n_encbias_params": n_encbias_params,
         "n_obs": n_obs,
         "n_head_params": n_head_params,
         "n_qubits": config.n_qubits,

@@ -92,12 +92,15 @@ def train_qnn(
     n_quantum = qnn["n_quantum_params"]
     n_obs = qnn["n_obs"]
 
-    n_scale = qnn.get("n_scale_params", 0)
+    n_scale = qnn.get("n_scale_params", 0)        # affine 'a' block (init 1)
+    n_encbias = qnn.get("n_encbias_params", 0)    # affine 'b' block (init 0)
 
     rng = np.random.default_rng(seed)
     init = rng.uniform(-0.1, 0.1, n_params)
     if n_scale:
-        init[:n_scale] = 1.0  # trainable input scale starts at 1 (== fixed encoding)
+        init[:n_scale] = 1.0  # affine scale a -> 1 (fresh model == fixed encoding)
+    if n_encbias:
+        init[n_scale:n_scale + n_encbias] = 0.0  # affine bias b -> 0
     init[-1] = 0.0  # linear-head bias b -> logit ~ 0 -> p ~ 0.5 at init
     params = pnp.array(init, requires_grad=True)
 
