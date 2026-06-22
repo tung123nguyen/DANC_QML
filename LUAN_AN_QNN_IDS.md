@@ -177,10 +177,11 @@ Pérez-Salinas và cộng sự (2020) chỉ ra rằng việc **nạp lại dữ 
 
 ## 2.6. Ansatz, expressivity và barren plateau
 
-Lựa chọn ansatz cân bằng giữa **expressivity** (lớp hàm mà mạch biểu diễn được) và **trainability** (gradient có đủ lớn để học không). Hai ansatz được khảo sát:
+Lựa chọn ansatz cân bằng giữa **expressivity** (lớp hàm mà mạch biểu diễn được) và **trainability** (gradient có đủ lớn để học không). Ba ansatz được khảo sát:
 
 - **Basic Entangler:** một cổng quay đơn (`RX` hoặc `RY`) trên mỗi qubit, theo sau bởi một vòng CNOT. Ít tham số (`n` mỗi lớp), nhẹ, ít rủi ro barren plateau.
 - **Strongly Entangling:** ba cổng quay (`RX, RY, RZ` hay tổ hợp Euler) trên mỗi qubit (`3n` tham số mỗi lớp) cộng các CNOT có khoảng cách thay đổi — biểu cảm hơn nhưng tốn tham số và dễ gặp gradient nhỏ hơn.
+- **Rotation-only:** ba cổng quay mỗi qubit nhưng **không có CNOT** — một baseline "không entanglement" để cô lập đóng góp của entanglement.
 
 **Barren plateau** (McClean và cộng sự, 2018) là hiện tượng phương sai gradient triệt tiêu theo cấp số mũ với số qubit đối với các mạch đủ ngẫu nhiên và sâu, khiến huấn luyện bất khả thi. Vì lý do này, hệ thống của chúng tôi ghi lại thống kê gradient (chuẩn, phương sai, trung bình trị tuyệt đối) cho một tập con chẩn đoán, để theo dõi trainability theo ansatz và mã hóa.
 
@@ -283,8 +284,9 @@ Số tham số mỗi lớp (one layer):
 |---|---|---|
 | `basic_entangler` | `n` | 1 cổng quay/qubit + vòng CNOT |
 | `strongly_entangling` | `3n` | 3 cổng quay/qubit + CNOT khoảng cách biến thiên |
+| `rotation_only` | `3n` | 3 cổng quay/qubit, **không CNOT** |
 
-Với `depth = d` lớp, tổng tham số mạch (chưa kể trainable feature map) là `d × (tham số/lớp)`.
+Với `depth = d` lớp, tổng tham số mạch (chưa kể trainable feature map) là `d × (tham số/lớp)`. Ansatz `rotation_only` đóng vai trò đối chứng để đo riêng đóng góp của entanglement.
 
 ## 3.6. Data re-uploading
 
@@ -735,6 +737,7 @@ n_obs(probs)  = 2 ** readout_wires
 n_quantum     = (2*n_qubits nếu trainable_encoding) + depth * params_per_layer(ansatz)
 params_per_layer(basic_entangler)     = n_qubits
 params_per_layer(strongly_entangling) = 3 * n_qubits
+params_per_layer(rotation_only)       = 3 * n_qubits
 
 n_head        = n_obs + 1
 n_params      = n_quantum + n_head

@@ -148,11 +148,22 @@ def main():
         write_config(cfg, "qnn_diag")
         n_qnn_diag += 1
 
+    # Entanglement ablation (targeted, NOT a full cross-product): angle encoding
+    # with the rotation_only ansatz at S1 / N=500 only. rotation_only has the same
+    # 3n params/layer as strongly_entangling (q3) but drops the CNOTs, so comparing
+    # it against q3 at this cell isolates entanglement's contribution (thesis 3.6.3).
+    n_ablation = 0
+    for seed in SEEDS:
+        cfg = build_qnn_config("q1", "angle", "rotation_only", "S1", 500, seed)
+        write_config(cfg, "qnn")
+        n_ablation += 1
+
     print(f"Generated {n_classical} classical configs")
     print(f"Generated {n_qnn} QNN configs "
           f"({len(QNN_VARIANTS)} variants: {[s or 'base' for s, _ in QNN_VARIANTS]})")
     print(f"Generated {n_qnn_diag} QNN diagnostic configs (log_gradients=True)")
-    print(f"Total: {n_classical + n_qnn + n_qnn_diag} experiments")
+    print(f"Generated {n_ablation} QNN rotation_only ablation configs (S1/N500)")
+    print(f"Total: {n_classical + n_qnn + n_qnn_diag + n_ablation} experiments")
     print(f"\nTest set is FIXED at {TEST_SAMPLE_SIZE} samples/class for all configs.")
     print(f"Train sizes vary: {TRAIN_SAMPLE_SIZES}")
 

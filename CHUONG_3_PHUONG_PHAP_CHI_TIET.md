@@ -236,7 +236,7 @@ Khối `[a | b]` (gồm `n` phần tử `a` rồi `n` phần tử `b`) được 
 
 ## 3.6. Các ansatz biến phân (`_apply_ansatz`)
 
-Ansatz là "phần học được" của mạch, quyết định sự đánh đổi giữa **expressivity** và **trainability**. Hai lựa chọn:
+Ansatz là "phần học được" của mạch, quyết định sự đánh đổi giữa **expressivity** và **trainability**. Ba lựa chọn:
 
 ### 3.6.1. Basic Entangler (`basic_entangler`)
 
@@ -260,12 +260,24 @@ tham số/lớp:  3n
 
 Biểu cảm hơn (nhiều bậc tự do, entanglement tầm xa) nhưng tốn tham số (`3n`/lớp) và dễ gradient nhỏ hơn.
 
-### 3.6.3. Số tham số mỗi lớp (`_params_per_layer`)
+### 3.6.3. Rotation-only (`rotation_only`) — đối chứng
+
+Ba cổng quay `RX, RY, RZ` trên mỗi qubit, **không có CNOT**:
+
+```
+mỗi lớp:  RX(θ_{3q}) RY(θ_{3q+1}) RZ(θ_{3q+2}) trên qubit q ;  (không entanglement)
+tham số/lớp:  3n
+```
+
+Cùng số tham số với strongly_entangling nhưng **không entanglement** → dùng để **cô lập đóng góp của entanglement** (so sánh có/không CNOT ở cùng ngân sách tham số).
+
+### 3.6.4. Số tham số mỗi lớp (`_params_per_layer`)
 
 | Ansatz | Tham số/lớp `ppl` | Entanglement |
 |---|---|---|
 | `basic_entangler` | `n` | có (vòng CNOT) |
 | `strongly_entangling` | `3n` | có (CNOT tầm biến thiên) |
+| `rotation_only` | `3n` | không |
 
 Tổng tham số mạch (chưa kể trainable feature map) = `L · ppl`.
 
