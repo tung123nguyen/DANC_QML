@@ -5,12 +5,11 @@ so the experiment.py loop can treat classical and QNN models the same way.
 
 Variants:
     encoding: 'angle' | 'reuploading'
-    ansatz:   'basic_entangler' | 'strongly_entangling' | 'rotation_only'
+    ansatz:   'basic_entangler' | 'strongly_entangling'
 
 PARAM SHAPE NOTES:
     - BasicEntangler: (depth, n_qubits)            - 1 rotation/qubit
     - StronglyEntangling: (depth, n_qubits, 3)     - 3 rotations/qubit
-    - Rotation-only: (depth, n_qubits, 3)          - 3 rotations, NO CNOT
 
 Re-uploading repeats (encoding + ansatz) `depth` times. With angle encoding
 only the ansatz is repeated.
@@ -79,12 +78,6 @@ def _apply_ansatz(params, ansatz: str, n_qubits: int):
         qml.StronglyEntanglingLayers(
             params.reshape(1, n_qubits, 3), wires=range(n_qubits)
         )
-    elif ansatz == "rotation_only":
-        # 3 rotations per qubit, no entanglement
-        for q in range(n_qubits):
-            qml.RX(params[q * 3 + 0], wires=q)
-            qml.RY(params[q * 3 + 1], wires=q)
-            qml.RZ(params[q * 3 + 2], wires=q)
     else:
         raise ValueError(f"Unknown ansatz: {ansatz}")
 
@@ -94,8 +87,6 @@ def _params_per_layer(ansatz: str, n_qubits: int) -> int:
     if ansatz == "basic_entangler":
         return n_qubits
     if ansatz == "strongly_entangling":
-        return n_qubits * 3
-    if ansatz == "rotation_only":
         return n_qubits * 3
     raise ValueError(ansatz)
 

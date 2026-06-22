@@ -20,7 +20,7 @@ TEST_SAMPLE_SIZE = 500                  # fixed test size per class
 N_FEATURES = 4
 SEEDS = [0, 1, 2, 3, 4]
 
-CLASSICAL_MODELS = ["lr", "svm", "rf", "mlp"]
+CLASSICAL_MODELS = ["lr", "svm", "rf", "mlp", "mlp_tiny"]
 
 # QNN models: (id, encoding, ansatz)
 QNN_MODELS = [
@@ -36,12 +36,13 @@ QNN_DEVICE = "lightning.qubit"  # change to "lightning.gpu" on Colab GPU
 QNN_ANGLE_CLIP = 3.0  # clip StandardScaler features to +/-3 sigma, scale to [-pi, pi]
 QNN_LOG_GRADIENTS = False  # gradient stats OFF for the sweep (we compare F1/acc, not grads)
 
-# Readout variants for the linear head (circuit unchanged, only what we measure).
-# Each is (name_suffix, extra model fields). "" = default single-qubit <Z_i> readout.
-QNN_READOUTS = [
-    ("", {}),                                              # z     : <Z_i>            (4-dim)
-    ("_zz", {"readout": "z+zz"}),                          # z+zz  : + <Z_iZ_j>       (10-dim)
-    ("_probs", {"readout": "probs", "readout_wires": 2}),  # probs : P over qubits 0,1 (4-dim)
+# QNN experiment variants (readout / encoding tweaks via extra model fields).
+# Each is (name_suffix, extra model fields). "" = baseline (z readout, fixed encoding).
+QNN_VARIANTS = [
+    ("", {}),                                              # baseline: <Z_i>, fixed encoding
+    ("_zz", {"readout": "z+zz"}),                          # readout + <Z_iZ_j>        (10-dim)
+    ("_probs", {"readout": "probs", "readout_wires": 2}),  # readout P over qubits 0,1  (4-dim)
+    ("_tenc", {"trainable_encoding": True}),               # affine encoding RY(a*x+b), readout z
 ]
 
 # A small diagnostic subset re-enables gradient logging for barren-plateau analysis.
@@ -130,7 +131,7 @@ def main():
     for (qnn_id, enc, ansatz), scenario, train_n, seed in product(
         QNN_MODELS, SCENARIOS, TRAIN_SAMPLE_SIZES, SEEDS
     ):
-        for suffix, rmodel in QNN_READOUTS:
+        for suffix, rmodel in QNN_VARIANTS:
             cfg = build_qnn_config(qnn_id, enc, ansatz, scenario, train_n, seed,
                                    name_suffix=suffix, readout_model=rmodel)
             write_config(cfg, "qnn")
@@ -149,7 +150,7 @@ def main():
 
     print(f"Generated {n_classical} classical configs")
     print(f"Generated {n_qnn} QNN configs "
-          f"({len(QNN_READOUTS)} readouts: {[s or 'z' for s, _ in QNN_READOUTS]})")
+          f"({len(QNN_VARIANTS)} variants: {[s or 'base' for s, _ in QNN_VARIANTS]})")
     print(f"Generated {n_qnn_diag} QNN diagnostic configs (log_gradients=True)")
     print(f"Total: {n_classical + n_qnn + n_qnn_diag} experiments")
     print(f"\nTest set is FIXED at {TEST_SAMPLE_SIZE} samples/class for all configs.")

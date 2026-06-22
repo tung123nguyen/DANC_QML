@@ -1,0 +1,23 @@
+experiment:
+  name: q4_reuploading_basic_entangler_s1_n100_f4_d4_tenc
+  seed: 2
+data:
+  scenario: S1
+  train_samples_per_class: 100
+  test_samples_per_class: 500
+  n_features: 4
+model:
+  type: qnn
+  encoding: reuploading
+  ansatz: basic_entangler
+  n_qubits: 4
+  depth: 4
+  device: lightning.qubit
+  angle_clip: 3.0
+  trainable_encoding: true
+training:
+  epochs: 80
+  learning_rate: 0.05
+  batch_size: 32
+evaluation:
+  log_gradients: false

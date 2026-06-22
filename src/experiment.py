@@ -86,9 +86,9 @@ def run_qnn(config: dict, data: dict) -> dict:
         depth=config["model"]["depth"],
         device_name=config["model"].get("device", "lightning.qubit"),
         angle_clip=config["model"].get("angle_clip", 3.0),
-        trainable_scale=config["model"].get("trainable_scale", False),
         readout=config["model"].get("readout", "z"),
         readout_wires=config["model"].get("readout_wires", 2),
+        trainable_encoding=config["model"].get("trainable_encoding", False),
     )
     qnn = build_qnn(qnn_cfg)
 

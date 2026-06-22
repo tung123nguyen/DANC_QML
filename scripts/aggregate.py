@@ -45,6 +45,7 @@ def collect_runs() -> pd.DataFrame:
             "n_qubits": cfg["model"].get("n_qubits", ""),
             "readout": cfg["model"].get("readout", "z"),
             "readout_wires": cfg["model"].get("readout_wires", ""),
+            "trainable_encoding": cfg["model"].get("trainable_encoding", False),
         }
         for k, v in metrics.items():
             if k in ("train_confusion", "test_confusion"):
@@ -78,6 +79,7 @@ def main():
     dup_keys = [
         "scenario", "train_samples_per_class", "seed",
         "model_type", "model_name", "encoding", "ansatz", "readout",
+        "trainable_encoding",
     ]
     n_before = len(df)
     df = (
