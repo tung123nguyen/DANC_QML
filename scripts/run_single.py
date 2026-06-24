@@ -1,7 +1,7 @@
 """Run a single experiment from a config file.
 
 Usage:
-    python scripts/run_single.py configs/classical/lr_s1_n250_f4_seed0.yaml
+    python scripts/run_single.py configs/classical/rf_s1_n250_f4_seed0.yaml
     python scripts/run_single.py configs/qnn/q2_angle_basic_s1_n250_f4_d2_seed0.yaml --smoke-test
 """
 from __future__ import annotations

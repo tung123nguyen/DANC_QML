@@ -26,7 +26,7 @@ def train_classical(model, X_train: np.ndarray, y_train: np.ndarray) -> dict:
 def _count_params(model) -> int:
     """Best-effort param count for sklearn models."""
     if hasattr(model, "coef_"):
-        # LR, linear SVM
+        # linear models exposing coef_
         return int(np.prod(model.coef_.shape)) + int(np.prod(model.intercept_.shape))
     if hasattr(model, "coefs_"):
         # MLP

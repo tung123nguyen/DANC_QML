@@ -20,7 +20,7 @@ TEST_SAMPLE_SIZE = 500                  # fixed test size per class
 N_FEATURES = 4
 SEEDS = [0, 1, 2, 3, 4]
 
-CLASSICAL_MODELS = ["lr", "svm", "rf", "mlp", "mlp_tiny"]
+CLASSICAL_MODELS = ["rf", "mlp", "mlp_tiny"]
 
 # QNN models: (id, encoding, ansatz)
 QNN_MODELS = [
